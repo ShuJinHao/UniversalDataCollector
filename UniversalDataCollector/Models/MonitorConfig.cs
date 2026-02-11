@@ -1,4 +1,6 @@
-﻿namespace UniversalDataCollector.Models
+﻿using System;
+
+namespace UniversalDataCollector.Models
 {
     // 监控模式枚举
     public enum MonitorMode
@@ -13,10 +15,10 @@
         public MonitorMode Mode { get; set; } = MonitorMode.File;
 
         // 2. 如果选了文件，填这里：
-        public string TargetFilePath { get; set; } = @"D:\Data\production.csv";
+        public string TargetFilePath { get; set; } = ""; // 默认为空，防止误读
 
         // 3. 如果选了文件夹，填这里：
-        public string TargetFolderPath { get; set; } = @"D:\Data\Logs\";
+        public string TargetFolderPath { get; set; } = ""; // 默认为空
 
         // 4. 文件夹模式下的文件名过滤（比如 *.csv）
         public string FileNamePattern { get; set; } = "*.csv";

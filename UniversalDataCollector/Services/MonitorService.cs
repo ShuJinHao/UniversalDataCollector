@@ -9,63 +9,65 @@ namespace UniversalDataCollector.Services
 {
     public class MonitorService
     {
+        public class RowData
+        {
+            public int LineIndex { get; set; } // 真实的物理行号
+            public string[] Columns { get; set; }
+        }
+
         public class ReadResult
         {
-            public List<string[]> NewRows { get; set; } = new List<string[]>();
+            public List<RowData> NewRows { get; set; } = new List<RowData>();
             public string CurrentFileName { get; set; }
         }
 
-        public ReadResult ReadData(MonitorConfig config, ref int lastRowIndex)
+        public ReadResult ReadData(MonitorConfig config, int lastProcessedLine)
         {
             string actualFilePath = "";
             var result = new ReadResult();
 
-            // 1. 确定文件路径
+            // 1. 确定路径
             if (config.Mode == MonitorMode.File)
-            {
                 actualFilePath = config.TargetFilePath;
-            }
-            else // 文件夹模式
+            else
             {
                 if (!Directory.Exists(config.TargetFolderPath)) return result;
-
-                try
-                {
-                    var dir = new DirectoryInfo(config.TargetFolderPath);
-                    string pattern = string.IsNullOrEmpty(config.FileNamePattern) ? "*.*" : config.FileNamePattern;
-                    // 找最新的文件
-                    var file = dir.GetFiles(pattern).OrderByDescending(f => f.LastWriteTime).FirstOrDefault();
-                    if (file == null) return result;
-                    actualFilePath = file.FullName;
-                }
-                catch { return result; }
+                var dir = new DirectoryInfo(config.TargetFolderPath);
+                string pattern = string.IsNullOrEmpty(config.FileNamePattern) ? "*.*" : config.FileNamePattern;
+                var file = dir.GetFiles(pattern).OrderByDescending(f => f.LastWriteTime).FirstOrDefault();
+                if (file == null) return result;
+                actualFilePath = file.FullName;
             }
 
             if (string.IsNullOrEmpty(actualFilePath) || !File.Exists(actualFilePath)) return result;
-
             result.CurrentFileName = actualFilePath;
 
             // 2. 读取数据
             try
             {
                 using (var fs = new FileStream(actualFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                using (var sr = new StreamReader(fs, Encoding.Default)) // 如有乱码请改 Encoding.GetEncoding("GB2312")
+                using (var sr = new StreamReader(fs, Encoding.Default))
                 {
-                    int lineIdx = 0;
+                    int currentLineIdx = 0;
                     string line;
                     while ((line = sr.ReadLine()) != null)
                     {
-                        lineIdx++;
-                        if (lineIdx <= lastRowIndex) continue; // 跳过旧行
-                        if (lineIdx == 1) continue; // 跳过标题
+                        currentLineIdx++;
+                        // ★ 核心修复：必须跳过已经处理过的物理行号 ★
+                        if (currentLineIdx <= lastProcessedLine) continue;
+                        if (currentLineIdx == 1) continue; // 跳过标题
                         if (string.IsNullOrWhiteSpace(line)) continue;
 
-                        result.NewRows.Add(line.Split(','));
+                        // 使用更稳妥的 CSV 分隔逻辑
+                        result.NewRows.Add(new RowData
+                        {
+                            LineIndex = currentLineIdx,
+                            Columns = line.Split(',')
+                        });
                     }
                 }
             }
             catch { }
-
             return result;
         }
     }

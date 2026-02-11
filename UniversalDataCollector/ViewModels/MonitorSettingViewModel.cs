@@ -1,7 +1,6 @@
-﻿using Microsoft.Win32;
+﻿using System;
 using System.ComponentModel;
 using System.Windows;
-using System.Windows.Input;
 using UniversalDataCollector.Models;
 using UniversalDataCollector.Services;
 
@@ -9,50 +8,47 @@ namespace UniversalDataCollector.ViewModels
 {
     public class MonitorSettingViewModel : INotifyPropertyChanged
     {
-        private MonitorConfig _config;
-        private ConfigService _service = new ConfigService();
-        private const string CfgPath = "MonitorConfig.json"; // ★ 指定文件名
+        private readonly ConfigService _configService = new ConfigService();
+        public MonitorConfig Config { get; set; }
 
-        public bool IsFileMode { get => _config.Mode == MonitorMode.File; set { if (value) _config.Mode = MonitorMode.File; RefreshUI(); } }
-        public bool IsFolderMode { get => _config.Mode == MonitorMode.Folder; set { if (value) _config.Mode = MonitorMode.Folder; RefreshUI(); } }
+        // 代理属性，确保界面 TextBox 即时刷新
+        public string TargetFilePath { get => Config.TargetFilePath; set { Config.TargetFilePath = value; OnPropertyChanged("TargetFilePath"); } }
 
-        public string TargetFilePath { get => _config.TargetFilePath; set { _config.TargetFilePath = value; OnPropertyChanged("TargetFilePath"); } }
-        public string TargetFolderPath { get => _config.TargetFolderPath; set { _config.TargetFolderPath = value; OnPropertyChanged("TargetFolderPath"); } }
-        public string FileNamePattern { get => _config.FileNamePattern; set { _config.FileNamePattern = value; OnPropertyChanged("FileNamePattern"); } }
-        public int IntervalSeconds { get => _config.IntervalSeconds; set { _config.IntervalSeconds = value; OnPropertyChanged("IntervalSeconds"); } }
+        public string TargetFolderPath { get => Config.TargetFolderPath; set { Config.TargetFolderPath = value; OnPropertyChanged("TargetFolderPath"); } }
+        public string FileNamePattern { get => Config.FileNamePattern; set { Config.FileNamePattern = value; OnPropertyChanged("FileNamePattern"); } }
+        public int IntervalSeconds { get => Config.IntervalSeconds; set { Config.IntervalSeconds = value; OnPropertyChanged("IntervalSeconds"); } }
 
-        public Visibility FilePanelVisibility => IsFileMode ? Visibility.Visible : Visibility.Collapsed;
-        public Visibility FolderPanelVisibility => IsFolderMode ? Visibility.Visible : Visibility.Collapsed;
+        public bool IsFileMode { get => Config.Mode == MonitorMode.File; set { if (value) { Config.Mode = MonitorMode.File; Notify(); } } }
+        public bool IsFolderMode { get => Config.Mode == MonitorMode.Folder; set { if (value) { Config.Mode = MonitorMode.Folder; Notify(); } } }
 
-        public ICommand SaveCommand { get; }
-        public ICommand BrowseFileCommand { get; }
-        public ICommand BrowseFolderCommand { get; }
+        private void Notify()
+        {
+            OnPropertyChanged("IsFileMode"); OnPropertyChanged("IsFolderMode");
+        }
+
+        public RelayCommand SaveCommand { get; set; }
 
         public MonitorSettingViewModel()
         {
-            // ★ 修复：使用泛型加载
-            _config = _service.Load<MonitorConfig>(CfgPath);
+            Config = _configService.Load<MonitorConfig>("MonitorConfig.json") ?? new MonitorConfig();
 
-            SaveCommand = new RelayCommand(Save);
-            BrowseFileCommand = new RelayCommand(o =>
+            SaveCommand = new RelayCommand(o =>
             {
-                var dlg = new OpenFileDialog { Filter = "CSV|*.csv|All|*.*" };
-                if (dlg.ShowDialog() == true) TargetFilePath = dlg.FileName;
+                try
+                {
+                    _configService.Save("MonitorConfig.json", Config);
+
+                    if (MessageBox.Show("配置已保存。必须重启程序以使监控生效，是否立即重启？", "确认", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                    {
+                        // ★ 调用 App 里的安全重启逻辑 ★
+                        App.RequestRestart();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("保存配置失败: " + ex.Message);
+                }
             });
-            BrowseFolderCommand = new RelayCommand(o => MessageBox.Show("请复制文件夹路径粘贴到输入框。"));
-        }
-
-        private void Save(object obj)
-        {
-            // ★ 修复：调用 2 个参数的 Save 方法
-            _service.Save(CfgPath, _config);
-            MessageBox.Show("保存成功！");
-        }
-
-        private void RefreshUI()
-        {
-            OnPropertyChanged("IsFileMode"); OnPropertyChanged("IsFolderMode");
-            OnPropertyChanged("FilePanelVisibility"); OnPropertyChanged("FolderPanelVisibility");
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

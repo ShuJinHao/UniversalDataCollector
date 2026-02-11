@@ -4,6 +4,9 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Data;
 using System.IO;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Threading;
 using UniversalDataCollector.Models;
 using UniversalDataCollector.Services;
@@ -12,179 +15,128 @@ namespace UniversalDataCollector.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
-        // --- 核心服务 ---
-        private MonitorService _monitorService = new MonitorService();
-
-        private MesService _mesService = new MesService();
-
-        // ★ 修复：使用支持泛型的 ConfigService
-        private ConfigService _configService = new ConfigService();
-
-        // --- 配置对象 ---
-        private AppConfig _mesConfig;
+        private readonly MonitorService _monitorService = new MonitorService();
+        private readonly MesService _mesService = new MesService();
+        private readonly ConfigService _configService = new ConfigService();
+        private readonly DispatcherTimer _timer = new DispatcherTimer();
+        private readonly object _logLock = new object();
+        private const string _cacheFile = "RowIndex.cache";
 
         private MonitorConfig _monitorConfig;
-
-        // --- 运行状态 ---
-        private DispatcherTimer _timer;
-
+        private AppConfig _mesConfig;
         private int _lastRowIndex = 0;
         private string _lastReadFileName = "";
-        private string _cacheFile = "RowIndex.cache";
 
-        // --- 界面绑定属性 ---
         public ObservableCollection<string> Logs { get; set; } = new ObservableCollection<string>();
-
         private DataTable _uploadedTable;
         public DataView GridData => _uploadedTable?.DefaultView;
 
         private string _statusText;
+        public string StatusText { get => _statusText; set { _statusText = value; OnPropertyChanged("StatusText"); } }
 
-        public string StatusText
+        private bool _isRunning;
+
+        public bool IsRunning
         {
-            get => _statusText;
-            set { _statusText = value; OnPropertyChanged("StatusText"); }
+            get => _isRunning;
+            set { if (_isRunning != value) { _isRunning = value; OnPropertyChanged("IsRunning"); OnPropertyChanged("StartButtonText"); if (_isRunning) StartScan(); else StopScan(); } }
         }
 
-        // --- 命令 ---
+        public string StartButtonText => IsRunning ? "停止监控" : "开始监控";
         public RelayCommand OpenMesSettingsCommand { get; set; }
-
         public RelayCommand OpenMonitorSettingsCommand { get; set; }
 
-        // --- 构造函数 ---
         public MainViewModel()
         {
-            try
-            {
-                // 1. 初始化命令
-                OpenMesSettingsCommand = new RelayCommand(ExecuteOpenMesSettings);
-                OpenMonitorSettingsCommand = new RelayCommand(ExecuteOpenMonitorSettings);
+            OpenMesSettingsCommand = new RelayCommand(o => new Views.MesSettingWindow().ShowDialog());
+            OpenMonitorSettingsCommand = new RelayCommand(o => new Views.MonitorSettingWindow().ShowDialog());
 
-                // 2. ★ 修复：泛型加载配置 (解决您之前的报错) ★
-                _mesConfig = _configService.Load<AppConfig>("AppConfig.json");
-                _monitorConfig = _configService.Load<MonitorConfig>("MonitorConfig.json");
+            _monitorConfig = _configService.Load<MonitorConfig>("MonitorConfig.json");
+            _mesConfig = _configService.Load<AppConfig>("AppConfig.json");
 
-                // 3. 初始化表格结构
-                InitDataTable();
+            if (File.Exists(_cacheFile)) int.TryParse(File.ReadAllText(_cacheFile), out _lastRowIndex);
 
-                // 4. 加载断点记忆
-                if (File.Exists(_cacheFile))
-                    int.TryParse(File.ReadAllText(_cacheFile), out _lastRowIndex);
+            InitDataTable();
+            _timer.Tick += OnTimerTick;
 
-                // 5. 输出初始日志
-                AddLog("系统启动...");
-                if (_monitorConfig.Mode == MonitorMode.File)
-                    AddLog($"当前模式: 单文件监控 -> {_monitorConfig.TargetFilePath}");
-                else
-                    AddLog($"当前模式: 文件夹监控 -> {_monitorConfig.TargetFolderPath} (过滤: {_monitorConfig.FileNamePattern})");
-
-                AddLog($"MES地址: {_mesConfig.MesApiUrl}");
-                AddLog($"上次进度: 第 {_lastRowIndex} 行");
-
-                // 6. 启动定时器
-                _timer = new DispatcherTimer();
-                _timer.Interval = TimeSpan.FromSeconds(_monitorConfig.IntervalSeconds > 0 ? _monitorConfig.IntervalSeconds : 3);
-                _timer.Tick += OnTimerTick;
-                _timer.Start();
-
-                StatusText = "正在运行...";
-            }
-            catch (Exception ex)
-            {
-                StatusText = "初始化失败: " + ex.Message;
-                AddLog("错误: " + ex.Message);
-            }
+            // ★ 修复：重启后自动检测配置并运行 ★
+            bool hasPath = _monitorConfig.Mode == MonitorMode.File ? !string.IsNullOrEmpty(_monitorConfig.TargetFilePath) : !string.IsNullOrEmpty(_monitorConfig.TargetFolderPath);
+            if (hasPath) IsRunning = true;
+            else StatusText = "等待配置路径...";
         }
 
-        private void InitDataTable()
+        private void StartScan()
         {
-            _uploadedTable = new DataTable();
-            foreach (var map in _mesConfig.Mappings)
-            {
-                if (!_uploadedTable.Columns.Contains(map.MesFieldName))
-                {
-                    _uploadedTable.Columns.Add(map.MesFieldName);
-                }
-            }
-            OnPropertyChanged("GridData");
+            _timer.Interval = TimeSpan.FromSeconds(_monitorConfig.IntervalSeconds > 0 ? _monitorConfig.IntervalSeconds : 3);
+            _timer.Start();
+            StatusText = "正在扫描...";
+            AddLog("▶ 监控服务已启动。");
         }
+
+        private void StopScan()
+        {
+            _timer.Stop(); StatusText = "已停止"; AddLog("⏸ 监控服务已人为停止。");
+        }
+
+        // ... 之前的引用保持不变 ...
 
         private async void OnTimerTick(object sender, EventArgs e)
         {
-            _timer.Stop(); // 暂停防止重入
+            _timer.Stop();
             try
             {
-                // 1. 读取数据
-                var result = _monitorService.ReadData(_monitorConfig, ref _lastRowIndex);
+                // 1. 读取数据 (传入真实的最后行号)
+                var result = _monitorService.ReadData(_monitorConfig, _lastRowIndex);
 
-                // 检测文件切换 (文件夹模式)
+                // 文件夹模式：如果切换了文件，重置行号
                 if (!string.IsNullOrEmpty(result.CurrentFileName) && result.CurrentFileName != _lastReadFileName)
                 {
                     if (!string.IsNullOrEmpty(_lastReadFileName))
                     {
-                        AddLog($"检测到新文件: {Path.GetFileName(result.CurrentFileName)}，重置进度。");
-                        _lastRowIndex = 0;
-                        _lastReadFileName = result.CurrentFileName;
-                        return; // 本轮跳过，下轮从 0 开始
+                        AddLog($"文件切换 -> {Path.GetFileName(result.CurrentFileName)}，进度重置。");
+                        _lastRowIndex = 0; // 重置物理行号
                     }
                     _lastReadFileName = result.CurrentFileName;
                 }
 
-                // 2. 处理新数据
+                // 2. 处理数据
                 if (result.NewRows.Count > 0)
                 {
-                    AddLog($"读取到 {result.NewRows.Count} 条新记录...");
-
-                    foreach (var rowCols in result.NewRows)
+                    foreach (var rowData in result.NewRows)
                     {
                         var uploadData = new Dictionary<string, object>();
-                        uploadData["id"] = 0;
-
                         bool mapSuccess = true;
 
                         foreach (var map in _mesConfig.Mappings)
                         {
                             try
                             {
-                                string rawVal = "";
-                                if (map.ColumnIndex < rowCols.Length)
-                                    rawVal = rowCols[map.ColumnIndex];
-
+                                string rawVal = map.ColumnIndex < rowData.Columns.Length ? rowData.Columns[map.ColumnIndex] : "";
                                 object finalVal = rawVal;
 
-                                // ★★★ 核心：完整的类型处理逻辑 (Int/Double/DateTime) ★★★
                                 switch (map.DataType)
                                 {
-                                    case "Int": // 整数处理
-                                        if (double.TryParse(rawVal, out double dVal))
-                                            finalVal = (int)dVal;
-                                        else
-                                            finalVal = int.TryParse(map.DefaultValue, out int def) ? def : 0;
+                                    case "Int":
+                                        // 兼容 1.0 这种带小数点的整数
+                                        finalVal = double.TryParse(rawVal, out double dv) ? (int)dv : 0;
                                         break;
 
-                                    case "Double": // 小数处理 (去科学计数法)
+                                    case "Double":
+                                        // ★ 解决科学计数法：转为 decimal 能有效防止 1E+07 这种格式 ★
                                         if (double.TryParse(rawVal, out double d))
-                                            finalVal = d.ToString("0.################");
+                                            finalVal = decimal.Parse(d.ToString("0.################"));
                                         else
-                                            finalVal = map.DefaultValue ?? "0";
+                                            finalVal = 0.0;
                                         break;
 
-                                    case "DateTime": // 时间处理
-                                        if (DateTime.TryParse(rawVal, out DateTime dt) && dt.Year > 2000)
-                                            finalVal = dt.ToString("yyyy-MM-dd HH:mm:ss");
-                                        else
-                                            finalVal = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                                    case "DateTime":
+                                        finalVal = DateTime.TryParse(rawVal, out DateTime dt) ? dt.ToString("yyyy-MM-dd HH:mm:ss") : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                                         break;
 
-                                    case "String":
                                     default:
-                                        if (string.IsNullOrWhiteSpace(rawVal))
-                                            finalVal = map.DefaultValue;
-                                        else
-                                            finalVal = rawVal.Trim();
+                                        finalVal = rawVal.Trim();
                                         break;
                                 }
-
                                 uploadData[map.MesFieldName] = finalVal;
                             }
                             catch { mapSuccess = false; }
@@ -193,91 +145,88 @@ namespace UniversalDataCollector.ViewModels
                         if (mapSuccess)
                         {
                             bool success = await _mesService.UploadDynamicAsync(_mesConfig.MesApiUrl, uploadData, AddLog);
-
                             if (success)
                             {
-                                _lastRowIndex++;
+                                // ★ 核心修复：更新为真实的物理行号，而不是简单的 ++ ★
+                                _lastRowIndex = rowData.LineIndex;
                                 File.WriteAllText(_cacheFile, _lastRowIndex.ToString());
                                 AddRowToGrid(uploadData);
                             }
                             else
                             {
-                                AddLog("上传中断，等待重试...");
-                                break; // 死磕当前行
+                                AddLog("上传失败，停止本轮，等待重试...");
+                                break;
                             }
                         }
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                AddLog($"扫描异常: {ex.Message}");
-            }
-            finally
-            {
-                _timer.Start(); // 恢复定时器
-            }
+            catch (Exception ex) { AddLog($"系统异常: {ex.Message}"); }
+            finally { if (IsRunning) _timer.Start(); }
         }
 
-        private void AddRowToGrid(Dictionary<string, object> data)
+        private Dictionary<string, object> MapRow(string[] cols)
         {
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            var dic = new Dictionary<string, object>();
+            foreach (var m in _mesConfig.Mappings)
             {
-                try
+                string raw = m.ColumnIndex < cols.Length ? cols[m.ColumnIndex] : "";
+                object val = raw;
+                switch (m.DataType)
                 {
-                    DataRow row = _uploadedTable.NewRow();
-                    foreach (var kvp in data)
-                    {
-                        if (_uploadedTable.Columns.Contains(kvp.Key))
-                        {
-                            row[kvp.Key] = kvp.Value;
-                        }
-                    }
-                    _uploadedTable.Rows.InsertAt(row, 0);
-                    if (_uploadedTable.Rows.Count > 100) _uploadedTable.Rows.RemoveAt(100);
+                    case "Int": val = double.TryParse(raw, out double d) ? (int)d : 0; break;
+                    case "Double": val = double.TryParse(raw, out double d2) ? d2.ToString("0.################") : "0"; break;
+                    case "DateTime": val = DateTime.TryParse(raw, out DateTime dt) ? dt.ToString("yyyy-MM-dd HH:mm:ss") : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"); break;
+                    default: val = string.IsNullOrWhiteSpace(raw) ? m.DefaultValue : raw.Trim(); break;
                 }
-                catch { }
+                dic[m.MesFieldName] = val;
+            }
+            return dic;
+        }
+
+        private void AddLog(string m)
+        {
+            string line = $"[{DateTime.Now:HH:mm:ss}] {m}";
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                Logs.Insert(0, line);
+                if (Logs.Count > 100) Logs.RemoveAt(100);
+            }));
+            Task.Run(() =>
+            {
+                lock (_logLock)
+                {
+                    try
+                    {
+                        string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+                        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                        File.AppendAllText(Path.Combine(dir, $"{DateTime.Now:yyyy-MM-dd}.txt"), line + Environment.NewLine);
+                    }
+                    catch { }
+                }
             });
         }
 
-        private void AddLog(string msg)
+        private void InitDataTable()
         {
-            string timeMsg = $"[{DateTime.Now:HH:mm:ss}] {msg}";
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            _uploadedTable = new DataTable();
+            foreach (var m in _mesConfig.Mappings) _uploadedTable.Columns.Add(m.MesFieldName);
+            OnPropertyChanged("GridData");
+        }
+
+        private void AddRowToGrid(Dictionary<string, object> d)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                Logs.Insert(0, timeMsg);
-                if (Logs.Count > 200) Logs.RemoveAt(Logs.Count - 1);
+                DataRow r = _uploadedTable.NewRow();
+                foreach (var k in d.Keys) if (_uploadedTable.Columns.Contains(k)) r[k] = d[k];
+                _uploadedTable.Rows.InsertAt(r, 0);
+                if (_uploadedTable.Rows.Count > 50) _uploadedTable.Rows.RemoveAt(50);
             });
-            try
-            {
-                File.AppendAllText("Run.log", timeMsg + Environment.NewLine);
-            }
-            catch { }
-        }
-
-        private void ExecuteOpenMesSettings(object obj)
-        {
-            var win = new Views.MesSettingWindow();
-            win.ShowDialog();
-            // MES 设置保存时自己会重启，这里不做额外处理
-        }
-
-        private void ExecuteOpenMonitorSettings(object obj)
-        {
-            var win = new Views.MonitorSettingWindow();
-            win.ShowDialog();
-
-            // ★ 修复：无 Forms 引用的原生重启
-            if (System.Windows.MessageBox.Show("配置已变更，是否立即重启软件？", "重启", System.Windows.MessageBoxButton.YesNo) == System.Windows.MessageBoxResult.Yes)
-            {
-                string appPath = System.Reflection.Assembly.GetEntryAssembly().Location;
-                System.Diagnostics.Process.Start(appPath);
-                System.Windows.Application.Current.Shutdown();
-            }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        protected void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        protected void OnPropertyChanged(string n) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
     }
 }

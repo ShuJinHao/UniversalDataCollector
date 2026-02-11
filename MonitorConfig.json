@@ -1,0 +1,7 @@
+{
+  "Mode": 0,
+  "TargetFilePath": "",
+  "TargetFolderPath": "",
+  "FileNamePattern": "*.csv",
+  "IntervalSeconds": 3
+}
