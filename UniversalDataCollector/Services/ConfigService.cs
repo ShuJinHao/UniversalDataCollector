@@ -1,29 +1,35 @@
 ﻿using Newtonsoft.Json;
 using System.IO;
-using UniversalDataCollector.Models;
 
 namespace UniversalDataCollector.Services
 {
     public class ConfigService
     {
-        private string _cfgPath = "AppConfig.json";
-
-        public AppConfig Load()
+        // ★★★ 泛型加载：传入什么类型(T)就返回什么类型 ★★★
+        public T Load<T>(string path) where T : new()
         {
-            if (!File.Exists(_cfgPath))
+            if (!File.Exists(path))
             {
-                var def = AppConfig.GetDefault();
-                Save(def);
+                var def = new T();
+                Save(path, def); // 文件不存在则创建默认的
                 return def;
             }
-            return JsonConvert.DeserializeObject<AppConfig>(File.ReadAllText(_cfgPath));
+            try
+            {
+                return JsonConvert.DeserializeObject<T>(File.ReadAllText(path));
+            }
+            catch
+            {
+                return new T();
+            }
         }
 
-        public void Save(AppConfig config)
+        // ★★★ 泛型保存：支持传入路径和配置对象 ★★★
+        public void Save<T>(string path, T config)
         {
-            // ★★★ 修复点：显式指定 Newtonsoft.Json.Formatting，解决和 System.Xml 的冲突 ★★★
-            string json = JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented);
-            File.WriteAllText(_cfgPath, json);
+            // 使用 Formatting.Indented 保证保存出来的 JSON 是格式化好看的
+            string json = JsonConvert.SerializeObject(config, Formatting.Indented);
+            File.WriteAllText(path, json);
         }
     }
 }

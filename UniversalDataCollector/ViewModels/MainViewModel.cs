@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Data; // 确保项目引用了 System.Data
+using System.Data;
 using System.IO;
 using System.Windows.Threading;
 using UniversalDataCollector.Models;
@@ -12,27 +12,27 @@ namespace UniversalDataCollector.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
-        // 服务类
+        // --- 核心服务 ---
         private MonitorService _monitorService = new MonitorService();
 
         private MesService _mesService = new MesService();
 
-        // 配置服务
-        private ConfigService _mesCfgService = new ConfigService();
+        // ★ 修复：使用支持泛型的 ConfigService
+        private ConfigService _configService = new ConfigService();
 
-        private MonitorConfigService _monitorCfgService = new MonitorConfigService();
-
-        // 数据状态
+        // --- 配置对象 ---
         private AppConfig _mesConfig;
 
         private MonitorConfig _monitorConfig;
 
+        // --- 运行状态 ---
         private DispatcherTimer _timer;
+
         private int _lastRowIndex = 0;
         private string _lastReadFileName = "";
         private string _cacheFile = "RowIndex.cache";
 
-        // 界面属性
+        // --- 界面绑定属性 ---
         public ObservableCollection<string> Logs { get; set; } = new ObservableCollection<string>();
 
         private DataTable _uploadedTable;
@@ -46,11 +46,12 @@ namespace UniversalDataCollector.ViewModels
             set { _statusText = value; OnPropertyChanged("StatusText"); }
         }
 
-        // 命令
+        // --- 命令 ---
         public RelayCommand OpenMesSettingsCommand { get; set; }
 
         public RelayCommand OpenMonitorSettingsCommand { get; set; }
 
+        // --- 构造函数 ---
         public MainViewModel()
         {
             try
@@ -59,14 +60,14 @@ namespace UniversalDataCollector.ViewModels
                 OpenMesSettingsCommand = new RelayCommand(ExecuteOpenMesSettings);
                 OpenMonitorSettingsCommand = new RelayCommand(ExecuteOpenMonitorSettings);
 
-                // 2. 加载配置
-                _mesConfig = _mesCfgService.Load();
-                _monitorConfig = _monitorCfgService.Load();
+                // 2. ★ 修复：泛型加载配置 (解决您之前的报错) ★
+                _mesConfig = _configService.Load<AppConfig>("AppConfig.json");
+                _monitorConfig = _configService.Load<MonitorConfig>("MonitorConfig.json");
 
-                // 3. 初始化表格
+                // 3. 初始化表格结构
                 InitDataTable();
 
-                // 4. 加载断点
+                // 4. 加载断点记忆
                 if (File.Exists(_cacheFile))
                     int.TryParse(File.ReadAllText(_cacheFile), out _lastRowIndex);
 
@@ -110,13 +111,13 @@ namespace UniversalDataCollector.ViewModels
 
         private async void OnTimerTick(object sender, EventArgs e)
         {
-            _timer.Stop();
+            _timer.Stop(); // 暂停防止重入
             try
             {
                 // 1. 读取数据
                 var result = _monitorService.ReadData(_monitorConfig, ref _lastRowIndex);
 
-                // 文件夹模式换文件检测
+                // 检测文件切换 (文件夹模式)
                 if (!string.IsNullOrEmpty(result.CurrentFileName) && result.CurrentFileName != _lastReadFileName)
                 {
                     if (!string.IsNullOrEmpty(_lastReadFileName))
@@ -124,7 +125,7 @@ namespace UniversalDataCollector.ViewModels
                         AddLog($"检测到新文件: {Path.GetFileName(result.CurrentFileName)}，重置进度。");
                         _lastRowIndex = 0;
                         _lastReadFileName = result.CurrentFileName;
-                        return;
+                        return; // 本轮跳过，下轮从 0 开始
                     }
                     _lastReadFileName = result.CurrentFileName;
                 }
@@ -151,23 +152,37 @@ namespace UniversalDataCollector.ViewModels
 
                                 object finalVal = rawVal;
 
-                                if (map.DataType == "Number")
+                                // ★★★ 核心：完整的类型处理逻辑 (Int/Double/DateTime) ★★★
+                                switch (map.DataType)
                                 {
-                                    if (double.TryParse(rawVal, out double d))
-                                        finalVal = d.ToString("0.################");
-                                    else
-                                        finalVal = map.DefaultValue ?? "0";
-                                }
-                                else if (map.DataType == "DateTime")
-                                {
-                                    if (DateTime.TryParse(rawVal, out DateTime dt) && dt.Year > 2000)
-                                        finalVal = dt.ToString("yyyy-MM-dd HH:mm:ss");
-                                    else
-                                        finalVal = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                                }
-                                else
-                                {
-                                    if (string.IsNullOrWhiteSpace(rawVal)) finalVal = map.DefaultValue;
+                                    case "Int": // 整数处理
+                                        if (double.TryParse(rawVal, out double dVal))
+                                            finalVal = (int)dVal;
+                                        else
+                                            finalVal = int.TryParse(map.DefaultValue, out int def) ? def : 0;
+                                        break;
+
+                                    case "Double": // 小数处理 (去科学计数法)
+                                        if (double.TryParse(rawVal, out double d))
+                                            finalVal = d.ToString("0.################");
+                                        else
+                                            finalVal = map.DefaultValue ?? "0";
+                                        break;
+
+                                    case "DateTime": // 时间处理
+                                        if (DateTime.TryParse(rawVal, out DateTime dt) && dt.Year > 2000)
+                                            finalVal = dt.ToString("yyyy-MM-dd HH:mm:ss");
+                                        else
+                                            finalVal = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                                        break;
+
+                                    case "String":
+                                    default:
+                                        if (string.IsNullOrWhiteSpace(rawVal))
+                                            finalVal = map.DefaultValue;
+                                        else
+                                            finalVal = rawVal.Trim();
+                                        break;
                                 }
 
                                 uploadData[map.MesFieldName] = finalVal;
@@ -188,7 +203,7 @@ namespace UniversalDataCollector.ViewModels
                             else
                             {
                                 AddLog("上传中断，等待重试...");
-                                break;
+                                break; // 死磕当前行
                             }
                         }
                     }
@@ -200,7 +215,7 @@ namespace UniversalDataCollector.ViewModels
             }
             finally
             {
-                _timer.Start();
+                _timer.Start(); // 恢复定时器
             }
         }
 
@@ -242,7 +257,9 @@ namespace UniversalDataCollector.ViewModels
 
         private void ExecuteOpenMesSettings(object obj)
         {
-            System.Windows.MessageBox.Show("请打开原来的 MES 设置窗口 (SettingsWindow.xaml)", "提示");
+            var win = new Views.MesSettingWindow();
+            win.ShowDialog();
+            // MES 设置保存时自己会重启，这里不做额外处理
         }
 
         private void ExecuteOpenMonitorSettings(object obj)
@@ -250,14 +267,11 @@ namespace UniversalDataCollector.ViewModels
             var win = new Views.MonitorSettingWindow();
             win.ShowDialog();
 
-            // ★★★ 这里修复了报错：去掉了 System.Windows.Forms，改用 WPF 原生重启 ★★★
+            // ★ 修复：无 Forms 引用的原生重启
             if (System.Windows.MessageBox.Show("配置已变更，是否立即重启软件？", "重启", System.Windows.MessageBoxButton.YesNo) == System.Windows.MessageBoxResult.Yes)
             {
-                // 1. 获取当前程序路径
                 string appPath = System.Reflection.Assembly.GetEntryAssembly().Location;
-                // 2. 启动新进程
                 System.Diagnostics.Process.Start(appPath);
-                // 3. 关闭当前进程
                 System.Windows.Application.Current.Shutdown();
             }
         }
