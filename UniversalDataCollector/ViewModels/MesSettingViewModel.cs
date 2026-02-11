@@ -7,53 +7,47 @@ using UniversalDataCollector.Services;
 
 namespace UniversalDataCollector.ViewModels
 {
+    // ★★★ 检查：这里类名必须是 MesSettingViewModel ★★★
     public class MesSettingViewModel : INotifyPropertyChanged
     {
-        private ConfigService _configService = new ConfigService();
-        private AppConfig _config;
+        private readonly ConfigService _configService = new ConfigService();
+        public AppConfig Config { get; set; }
 
-        public AppConfig Config
-        {
-            get => _config;
-            set { _config = value; OnPropertyChanged("Config"); }
-        }
+        public string MesApiUrl { get { return Config.MesApiUrl; } set { Config.MesApiUrl = value; OnPropertyChanged("MesApiUrl"); } }
+        public ObservableCollection<FieldMapping> Mappings { get { return Config.Mappings; } }
 
-        public RelayCommand AddMappingCommand { get; set; }
-        public RelayCommand DeleteMappingCommand { get; set; }
+        // 选中项，用于删除
+        private FieldMapping _selectedMapping;
+
+        public FieldMapping SelectedMapping { get { return _selectedMapping; } set { _selectedMapping = value; OnPropertyChanged("SelectedMapping"); } }
+
+        public RelayCommand AddCommand { get; set; }
+        public RelayCommand DeleteCommand { get; set; }
         public RelayCommand SaveCommand { get; set; }
 
         public MesSettingViewModel()
         {
-            // 加载配置
-            Config = _configService.Load<AppConfig>("AppConfig.json");
+            Config = _configService.Load<AppConfig>("AppConfig.json") ?? new AppConfig();
 
-            // 确保 Mappings 已初始化
-            if (Config.Mappings == null)
-                Config.Mappings = new ObservableCollection<FieldMapping>();
+            AddCommand = new RelayCommand(o => Mappings.Add(new FieldMapping { MesFieldName = "NewField", ColumnIndex = 0, DataType = "String" }));
 
-            // 添加按钮逻辑
-            AddMappingCommand = new RelayCommand(o =>
+            DeleteCommand = new RelayCommand(o =>
             {
-                Config.Mappings.Add(new FieldMapping { MesFieldName = "NEW_FIELD", DataType = "String" });
+                if (SelectedMapping != null) Mappings.Remove(SelectedMapping);
             });
 
-            // 删除按钮逻辑
-            DeleteMappingCommand = new RelayCommand(o =>
-            {
-                if (o is FieldMapping mapping)
-                    Config.Mappings.Remove(mapping);
-            });
-
-            // 保存逻辑
             SaveCommand = new RelayCommand(o =>
             {
                 _configService.Save("AppConfig.json", Config);
-                MessageBox.Show("配置已保存！");
+                MessageBox.Show("MES配置已保存");
             });
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        protected void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        protected void OnPropertyChanged(string name)
+        {
+            if (PropertyChanged != null) PropertyChanged(this, new PropertyChangedEventArgs(name));
+        }
     }
 }

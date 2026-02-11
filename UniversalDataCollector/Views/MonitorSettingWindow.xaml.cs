@@ -1,5 +1,7 @@
-﻿using System.Windows;
-using Microsoft.Win32;
+﻿using System;
+using System.Windows;
+using Microsoft.Win32; // 用于 OpenFileDialog
+using UniversalDataCollector.ViewModels;
 
 namespace UniversalDataCollector.Views
 {
@@ -10,35 +12,39 @@ namespace UniversalDataCollector.Views
             InitializeComponent();
         }
 
+        // ★ 恢复：点击选择文件
         private void SelectFile_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new OpenFileDialog { Filter = "CSV文件 (*.csv)|*.csv" };
-            if (dialog.ShowDialog() == true)
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = "Excel/CSV Files|*.csv;*.xlsx;*.xls|All files|*.*";
+            if (openFileDialog.ShowDialog() == true)
             {
-                // ★ 直接通过 DataContext 修改，触发通知 ★
-                if (this.DataContext is ViewModels.MonitorSettingViewModel vm)
+                var vm = this.DataContext as MonitorSettingViewModel;
+                if (vm != null)
                 {
-                    vm.TargetFilePath = dialog.FileName;
+                    vm.TargetFilePath = openFileDialog.FileName;
                 }
             }
         }
 
+        // ★ 恢复：点击选择文件夹
         private void SelectFolder_Click(object sender, RoutedEventArgs e)
         {
-            // 变通方法：选个文件取目录
-            var dialog = new OpenFileDialog { Title = "请选择文件夹下的任意一个文件" };
-            if (dialog.ShowDialog() == true)
+            // 在 WPF 中选择文件夹最简单的办法是使用 Windows Forms 的 Dialog
+            // 如果不想引入 Forms 引用，可以用 OpenFileDialog 变通，但体验不好
+            // 这里使用最稳妥的 Forms 方式 (需要项目引用 System.Windows.Forms)
+
+            using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
-                if (this.DataContext is ViewModels.MonitorSettingViewModel vm)
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
-                    vm.TargetFolderPath = System.IO.Path.GetDirectoryName(dialog.FileName);
+                    var vm = this.DataContext as MonitorSettingViewModel;
+                    if (vm != null)
+                    {
+                        vm.TargetFolderPath = dialog.SelectedPath;
+                    }
                 }
             }
-        }
-
-        private void Close_Click(object sender, RoutedEventArgs e)
-        {
-            this.Close();
         }
     }
 }

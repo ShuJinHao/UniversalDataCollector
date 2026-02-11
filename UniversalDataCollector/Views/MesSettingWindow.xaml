@@ -2,20 +2,18 @@
     x:Class="UniversalDataCollector.Views.MesSettingWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="clr-namespace:System;assembly=mscorlib"
     xmlns:vm="clr-namespace:UniversalDataCollector.ViewModels"
-    Title="MES 上传映射配置"
-    Width="750"
+    Title="MES接口配置"
+    Width="650"
     Height="500"
-    Background="#F5F5F5"
+    Background="#F0F0F0"
     WindowStartupLocation="CenterScreen">
-
     <Window.DataContext>
         <vm:MesSettingViewModel />
     </Window.DataContext>
-
-    <Grid Margin="20">
+    <Grid Margin="15">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -23,126 +21,90 @@
 
         <GroupBox
             Grid.Row="0"
-            Margin="0,0,0,15"
+            Margin="0,0,0,10"
             Padding="10"
-            Header="接口配置">
-            <StackPanel>
+            Background="White"
+            Header="接口设置">
+            <DockPanel>
                 <TextBlock
-                    Margin="0,0,0,5"
-                    Foreground="#333"
-                    Text="MES 接口 API 地址:" />
+                    Margin="0,0,10,0"
+                    VerticalAlignment="Center"
+                    Text="MES 上传地址:" />
                 <TextBox
                     Height="28"
                     VerticalContentAlignment="Center"
-                    Text="{Binding Config.MesApiUrl, UpdateSourceTrigger=PropertyChanged}" />
-            </StackPanel>
+                    Text="{Binding MesApiUrl, UpdateSourceTrigger=PropertyChanged}" />
+            </DockPanel>
+        </GroupBox>
+
+        <GroupBox
+            Grid.Row="1"
+            Padding="5"
+            Background="White"
+            Header="字段映射配置">
+            <DataGrid
+                AutoGenerateColumns="False"
+                BorderBrush="#DDDDDD"
+                BorderThickness="1"
+                CanUserAddRows="False"
+                GridLinesVisibility="Horizontal"
+                ItemsSource="{Binding Mappings}"
+                RowHeaderWidth="0"
+                SelectedItem="{Binding SelectedMapping}">
+                <DataGrid.Columns>
+                    <DataGridTextColumn
+                        Width="*"
+                        Binding="{Binding MesFieldName}"
+                        Header="MES字段名 (Key)" />
+                    <DataGridTextColumn
+                        Width="150"
+                        Binding="{Binding ColumnIndex}"
+                        Header="Excel列索引 (0,1,2...)" />
+                    <DataGridComboBoxColumn
+                        Width="120"
+                        Header="数据类型"
+                        SelectedItemBinding="{Binding DataType}">
+                        <DataGridComboBoxColumn.ItemsSource>
+                            <x:Array Type="{x:Type sys:String}">
+                                <sys:String>String</sys:String>
+                                <sys:String>Int</sys:String>
+                                <sys:String>Double</sys:String>
+                                <sys:String>DateTime</sys:String>
+                            </x:Array>
+                        </DataGridComboBoxColumn.ItemsSource>
+                    </DataGridComboBoxColumn>
+                </DataGrid.Columns>
+            </DataGrid>
         </GroupBox>
 
         <StackPanel
-            Grid.Row="1"
-            Margin="0,0,0,10"
-            Orientation="Horizontal">
-            <Button
-                Width="120"
-                Height="30"
-                Background="#007ACC"
-                BorderThickness="0"
-                Command="{Binding AddMappingCommand}"
-                Foreground="White">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Margin="0,0,5,0" Text="➕" />
-                    <TextBlock Text="添加字段映射" />
-                </StackPanel>
-            </Button>
-            <TextBlock
-                Margin="15,0,0,0"
-                VerticalAlignment="Center"
-                FontStyle="Italic"
-                Foreground="#666"
-                Text="* 提示：CSV列索引从0开始（0=第1列）" />
-        </StackPanel>
-
-        <DataGrid
             Grid.Row="2"
-            AutoGenerateColumns="False"
-            Background="White"
-            BorderBrush="#DDD"
-            CanUserAddRows="False"
-            HorizontalGridLinesBrush="#EEE"
-            ItemsSource="{Binding Config.Mappings}"
-            RowHeight="32"
-            VerticalGridLinesBrush="#EEE">
-            <DataGrid.Columns>
-                <DataGridTextColumn
-                    Width="*"
-                    Binding="{Binding MesFieldName, UpdateSourceTrigger=PropertyChanged}"
-                    Header="MES 字段名" />
-
-                <DataGridTextColumn
-                    Width="100"
-                    Binding="{Binding ColumnIndex, UpdateSourceTrigger=PropertyChanged}"
-                    Header="CSV 列索引" />
-
-                <DataGridTemplateColumn Width="120" Header="数据类型">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <ComboBox
-                                BorderThickness="0"
-                                SelectedValue="{Binding DataType, UpdateSourceTrigger=PropertyChanged}"
-                                SelectedValuePath="Content">
-                                <ComboBoxItem Content="String" />
-                                <ComboBoxItem Content="Int" />
-                                <ComboBoxItem Content="Double" />
-                                <ComboBoxItem Content="DateTime" />
-                            </ComboBox>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-
-                <DataGridTextColumn
-                    Width="100"
-                    Binding="{Binding DefaultValue, UpdateSourceTrigger=PropertyChanged}"
-                    Header="默认值" />
-
-                <DataGridTemplateColumn Width="60" Header="操作">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <Button
-                                Background="Transparent"
-                                BorderThickness="0"
-                                Command="{Binding DataContext.DeleteMappingCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                CommandParameter="{Binding}"
-                                Content="删除"
-                                Cursor="Hand"
-                                Foreground="Red" />
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-            </DataGrid.Columns>
-        </DataGrid>
-
-        <StackPanel
-            Grid.Row="3"
-            Margin="0,20,0,0"
+            Margin="0,15,0,0"
             HorizontalAlignment="Right"
             Orientation="Horizontal">
             <Button
                 Width="100"
-                Height="32"
+                Height="30"
                 Margin="0,0,10,0"
-                Background="#4CAF50"
-                BorderThickness="0"
-                Command="{Binding SaveCommand}"
-                Content="保存配置"
-                Foreground="White" />
-
+                Background="White"
+                Command="{Binding AddCommand}"
+                Content="➕ 新增字段" />
             <Button
-                Width="80"
-                Height="32"
-                Background="#DDD"
-                BorderThickness="0"
-                Click="Close_Click"
-                Content="关闭" />
+                Width="100"
+                Height="30"
+                Margin="0,0,10,0"
+                Background="White"
+                Command="{Binding DeleteCommand}"
+                Content="➖ 删除选中"
+                Foreground="#D32F2F" />
+            <Button
+                Width="100"
+                Height="30"
+                Background="#4CAF50"
+                Command="{Binding SaveCommand}"
+                Content="💾 保存配置"
+                FontWeight="Bold"
+                Foreground="White" />
         </StackPanel>
     </Grid>
 </Window>
