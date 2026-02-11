@@ -2,22 +2,27 @@
 
 namespace UniversalDataCollector.Models
 {
+    // 监控模式枚举
     public enum MonitorType
     {
-        SingleFile,  // 监控单个固定文件 (死磕模式)
-        Folder       // 监控文件夹 (自动找最新文件)
+        SingleFile,  // 监控单个固定文件
+        Folder       // 监控文件夹
     }
 
+    // 文件类型枚举
     public enum FileType
     {
         Csv,
-        Excel        // 预留 Excel 支持
+        Excel
     }
 
     public class FieldMapping
     {
         public string MesFieldName { get; set; }
-        public int ColumnIndex { get; set; } // 通用列索引
+
+        // ★★★ 修正点：统一命名为 ColumnIndex，解决 "未包含定义" 的报错 ★★★
+        public int ColumnIndex { get; set; }
+
         public string DataType { get; set; } = "String";
         public string DefaultValue { get; set; }
     }
@@ -27,9 +32,9 @@ namespace UniversalDataCollector.Models
         // --- 核心监控配置 ---
         public MonitorType MonitorMode { get; set; } = MonitorType.SingleFile;
 
-        public string TargetPath { get; set; } = ""; // 文件路径 或 文件夹路径
+        public string TargetPath { get; set; } = "";
         public FileType FileType { get; set; } = FileType.Csv;
-        public string FileNamePattern { get; set; } = "*.csv"; // 文件夹模式下的过滤规则
+        public string FileNamePattern { get; set; } = "*.csv";
 
         // --- MES 配置 ---
         public string MesApiUrl { get; set; } = "http://10.101.200.15:9999/api/Insulation/Upload";
@@ -45,6 +50,7 @@ namespace UniversalDataCollector.Models
             {
                 Mappings = new List<FieldMapping>
                 {
+                    // 这里也统一使用 ColumnIndex
                     new FieldMapping { MesFieldName="packCode", ColumnIndex=0 },
                     new FieldMapping { MesFieldName="resistance", ColumnIndex=2, DataType="Number" },
                     new FieldMapping { MesFieldName="createTime", ColumnIndex=5, DataType="DateTime" }
