@@ -85,11 +85,16 @@
       <SubType>Designer</SubType>
     </ApplicationDefinition>
     <Compile Include="Models\MonitorConfig.cs" />
+    <Compile Include="Models\TemplateConfig.cs" />
+    <Compile Include="Services\CollectorCoreService.cs" />
     <Compile Include="Services\ConfigService.cs" />
     <Compile Include="Services\CsvReaderService.cs" />
+    <Compile Include="Services\DataMappingService.cs" />
     <Compile Include="Services\MesService.cs" />
     <Compile Include="Services\MonitorConfigService.cs" />
     <Compile Include="Services\MonitorService.cs" />
+    <Compile Include="Services\TemplateEnricherService.cs" />
+    <Compile Include="Services\TypeConversionService.cs" />
     <Compile Include="ViewModels\MainViewModel.cs" />
     <Compile Include="ViewModels\MesSettingViewModel.cs" />
     <Compile Include="ViewModels\MonitorSettingViewModel.cs" />

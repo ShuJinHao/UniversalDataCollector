@@ -2,16 +2,21 @@
     x:Class="UniversalDataCollector.Views.MesSettingWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:sys="clr-namespace:System;assembly=mscorlib"
     xmlns:vm="clr-namespace:UniversalDataCollector.ViewModels"
     Title="MES接口配置"
-    Width="650"
-    Height="500"
+    Width="800"
+    Height="600"
     Background="#F0F0F0"
-    WindowStartupLocation="CenterScreen">
+    WindowStartupLocation="CenterScreen"
+    mc:Ignorable="d">
+
     <Window.DataContext>
         <vm:MesSettingViewModel />
     </Window.DataContext>
+
     <Grid Margin="15">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -52,27 +57,38 @@
                 RowHeaderWidth="0"
                 SelectedItem="{Binding SelectedMapping}">
                 <DataGrid.Columns>
+
                     <DataGridTextColumn
-                        Width="*"
+                        Width="140"
                         Binding="{Binding MesFieldName}"
-                        Header="MES字段名 (Key)" />
+                        Header="MES字段 (可嵌套: dcr.list1)" />
+
                     <DataGridTextColumn
-                        Width="150"
+                        Width="80"
                         Binding="{Binding ColumnIndex}"
-                        Header="Excel列索引 (0,1,2...)" />
+                        Header="列索引" />
+
                     <DataGridComboBoxColumn
-                        Width="120"
+                        Width="110"
                         Header="数据类型"
-                        SelectedItemBinding="{Binding DataType}">
+                        SelectedValueBinding="{Binding DataType}">
                         <DataGridComboBoxColumn.ItemsSource>
                             <x:Array Type="{x:Type sys:String}">
                                 <sys:String>String</sys:String>
                                 <sys:String>Int</sys:String>
                                 <sys:String>Double</sys:String>
+                                <sys:String>DoubleArray</sys:String>
                                 <sys:String>DateTime</sys:String>
+                                <sys:String>Bool</sys:String>
+                                <sys:String>TemplateFile</sys:String>
                             </x:Array>
                         </DataGridComboBoxColumn.ItemsSource>
                     </DataGridComboBoxColumn>
+
+                    <DataGridTextColumn
+                        Width="*"
+                        Binding="{Binding ExtractionRule}"
+                        Header="正则提取规则 (Group[1])" />
                 </DataGrid.Columns>
             </DataGrid>
         </GroupBox>
